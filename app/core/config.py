@@ -15,6 +15,11 @@ class Settings(BaseSettings):
 
     GEMINI_API_KEY: str
 
+    # Razorpay Test Mode configuration
+    RAZORPAY_KEY_ID: str
+    RAZORPAY_KEY_SECRET: str
+    RAZORPAY_BASE_URL: str = "https://api.razorpay.com/v1"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

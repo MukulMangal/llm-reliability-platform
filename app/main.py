@@ -10,6 +10,7 @@ from app.api.documents import router as document_router
 from app.api.search import router as search_router
 from app.api.query import router as query_router
 from app.api.knowledge_graph import router as knowledge_graph_router
+from app.api.agent import router as agent_router
 
 setup_logging()
 
@@ -28,3 +29,4 @@ app.include_router(document_router)
 app.include_router(search_router)
 app.include_router(query_router)
 app.include_router(knowledge_graph_router)
+app.include_router(agent_router)
