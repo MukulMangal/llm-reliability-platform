@@ -11,6 +11,10 @@ from app.api.search import router as search_router
 from app.api.query import router as query_router
 from app.api.knowledge_graph import router as knowledge_graph_router
 from app.api.agent import router as agent_router
+from app.api.activity import router as activity_router
+from app.api.payments import router as payments_router
+from app.api.payment_links import router as payment_links_router
+from app.api.refunds import router as refunds_router
 
 setup_logging()
 
@@ -30,3 +34,7 @@ app.include_router(search_router)
 app.include_router(query_router)
 app.include_router(knowledge_graph_router)
 app.include_router(agent_router)
+app.include_router(activity_router)
+app.include_router(payments_router)
+app.include_router(payment_links_router)
+app.include_router(refunds_router)

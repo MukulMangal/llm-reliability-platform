@@ -6,6 +6,10 @@ from app.core.config import settings
 class RazorpayService:
     """
     Client for interacting with the Razorpay API in Test Mode.
+
+    This service is responsible only for communicating with Razorpay.
+    Business validation and financial safety rules remain in the
+    agent/tool layer.
     """
 
     def __init__(self) -> None:
@@ -15,17 +19,27 @@ class RazorpayService:
             settings.RAZORPAY_KEY_SECRET,
         )
 
-    def get(self, endpoint: str) -> dict:
-        """
-        Send a GET request to the Razorpay API.
-        """
-        return self._request("GET", endpoint)
+    def get(
+        self,
+        endpoint: str,
+        params: dict | None = None,
+    ) -> dict:
+        return self._request(
+            "GET",
+            endpoint,
+            params=params,
+        )
 
-    def post(self, endpoint: str, data: dict) -> dict:
-        """
-        Send a POST request to the Razorpay API.
-        """
-        return self._request("POST", endpoint, data=data)
+    def post(
+        self,
+        endpoint: str,
+        data: dict | None = None,
+    ) -> dict:
+        return self._request(
+            "POST",
+            endpoint,
+            data=data,
+        )
 
     def create_payment_link(
         self,
@@ -33,60 +47,106 @@ class RazorpayService:
         description: str,
         currency: str = "INR",
     ) -> dict:
-        """
-        Create a Razorpay Payment Link.
-
-        Amount must be provided in the smallest currency unit.
-        For INR, 10000 represents ₹100.00.
-        """
         if amount <= 0:
-            raise ValueError("Payment link amount must be greater than zero.")
+            raise ValueError(
+                "Payment link amount must be greater than zero."
+            )
 
         if not description.strip():
-            raise ValueError("Payment link description cannot be empty.")
+            raise ValueError(
+                "Payment link description cannot be empty."
+            )
 
         payload = {
             "amount": amount,
-            "currency": currency,
+            "currency": currency.upper(),
             "description": description,
         }
 
-        return self.post("/payment_links", payload)
+        return self.post(
+            "/payment_links",
+            payload,
+        )
 
-    def fetch_payment_link(self, payment_link_id: str) -> dict:
-        """
-        Fetch a Razorpay Payment Link by ID.
-        """
+    def fetch_payment_link(
+        self,
+        payment_link_id: str,
+    ) -> dict:
         if not payment_link_id.strip():
-            raise ValueError("Payment link ID cannot be empty.")
+            raise ValueError(
+                "Payment link ID cannot be empty."
+            )
 
-        return self.get(f"/payment_links/{payment_link_id}")
+        return self.get(
+            f"/payment_links/{payment_link_id}"
+        )
 
-    def fetch_payment(self, payment_id: str) -> dict:
-        """
-        Fetch a Razorpay Payment by ID.
-        """
+    def fetch_payment(
+        self,
+        payment_id: str,
+    ) -> dict:
         if not payment_id.strip():
-            raise ValueError("Payment ID cannot be empty.")
+            raise ValueError(
+                "Payment ID cannot be empty."
+            )
 
-        return self.get(f"/payments/{payment_id}")
+        return self.get(
+            f"/payments/{payment_id}"
+        )
+
+    def list_payments(
+        self,
+        count: int = 20,
+        skip: int = 0,
+    ) -> dict:
+        return self.get(
+            "/payments",
+            params={
+                "count": count,
+                "skip": skip,
+            },
+        )
+
+    def list_payment_links(
+        self,
+        count: int = 20,
+        skip: int = 0,
+    ) -> dict:
+        return self.get(
+            "/payment_links",
+            params={
+                "count": count,
+                "skip": skip,
+            },
+        )
+
+    def list_refunds(
+        self,
+        count: int = 20,
+        skip: int = 0,
+    ) -> dict:
+        return self.get(
+            "/refunds",
+            params={
+                "count": count,
+                "skip": skip,
+            },
+        )
 
     def refund_payment(
         self,
         payment_id: str,
         amount: int | None = None,
     ) -> dict:
-        """
-        Refund a Razorpay payment.
-
-        If amount is omitted, Razorpay processes a full refund.
-        Amount must be provided in the smallest currency unit.
-        """
         if not payment_id.strip():
-            raise ValueError("Payment ID cannot be empty.")
+            raise ValueError(
+                "Payment ID cannot be empty."
+            )
 
         if amount is not None and amount <= 0:
-            raise ValueError("Refund amount must be greater than zero.")
+            raise ValueError(
+                "Refund amount must be greater than zero."
+            )
 
         payload = {}
 
@@ -103,10 +163,14 @@ class RazorpayService:
         method: str,
         endpoint: str,
         data: dict | None = None,
+        params: dict | None = None,
     ) -> dict:
         """
-        Execute a Razorpay API request with authentication and
-        consistent error handling.
+        Execute a Razorpay API request with authentication.
+
+        Razorpay API error descriptions are preserved in a safe,
+        user-readable RuntimeError so the agent can distinguish
+        validation/business failures from generic connectivity errors.
         """
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
 
@@ -116,6 +180,7 @@ class RazorpayService:
                 url=url,
                 auth=self.auth,
                 json=data,
+                params=params,
                 timeout=10.0,
             )
 
@@ -124,15 +189,50 @@ class RazorpayService:
             return response.json()
 
         except httpx.HTTPStatusError as exc:
+            error_message = self._extract_api_error(exc.response)
+
             raise RuntimeError(
-                f"Razorpay API request failed with status "
-                f"{exc.response.status_code}"
+                error_message
             ) from exc
 
         except httpx.RequestError as exc:
             raise RuntimeError(
                 "Unable to connect to Razorpay API"
             ) from exc
+
+    @staticmethod
+    def _extract_api_error(response: httpx.Response) -> str:
+        """
+        Extract Razorpay's safe error description from an HTTP response.
+
+        Razorpay commonly returns:
+        {
+            "error": {
+                "code": "...",
+                "description": "..."
+            }
+        }
+
+        If the response cannot be parsed, fall back to the HTTP status.
+        """
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = None
+
+        if isinstance(payload, dict):
+            error = payload.get("error")
+
+            if isinstance(error, dict):
+                description = error.get("description")
+
+                if isinstance(description, str) and description.strip():
+                    return description.strip()
+
+        return (
+            "Razorpay API request failed with status "
+            f"{response.status_code}"
+        )
 
 
 razorpay_service = RazorpayService()

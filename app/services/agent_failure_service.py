@@ -12,6 +12,7 @@ class AgentFailureService:
         """
         Convert an exception into a safe agent failure response.
         """
+
         if isinstance(error, ValueError):
             return {
                 "success": False,
@@ -38,22 +39,38 @@ class AgentFailureService:
     @staticmethod
     def _safe_runtime_message(error: RuntimeError) -> str:
         """
-        Return a safe message without exposing internal API details.
-        """
-        message = str(error).lower()
+        Return a safe user-facing message for infrastructure and
+        Razorpay API failures.
 
-        if "unable to connect" in message:
+        RazorpayService already extracts the API's user-facing
+        description rather than exposing raw HTTP responses,
+        credentials, or stack traces.
+        """
+
+        message = str(error).strip()
+
+        if not message:
+            return "The Razorpay operation could not be completed."
+
+        lowered = message.lower()
+
+        if "unable to connect" in lowered:
             return (
                 "Unable to connect to Razorpay. "
                 "Please try again."
             )
 
-        if "request failed" in message:
+        if "razorpay api request failed with status" in lowered:
             return (
                 "Razorpay could not complete the requested operation."
             )
 
-        return "The Razorpay operation could not be completed."
+        if "razorpay" in lowered:
+            return message
+
+        return (
+            "The Razorpay operation could not be completed."
+        )
 
 
 agent_failure_service = AgentFailureService()
